@@ -306,7 +306,7 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
   }
 
   function addPackage() {
-    if (form.packages.length >= 3) return
+    if (form.packages.length >= 4) return
     setForm({ ...form, packages: [...form.packages, emptyPackage()] })
   }
 

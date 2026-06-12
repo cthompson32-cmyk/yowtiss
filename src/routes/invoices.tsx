@@ -7,11 +7,9 @@ export const Route = createFileRoute('/invoices')({
   component: InvoicesPage,
 })
 
-// ── Company config defaults ────────────────────────────────────────────────
 const DEFAULT_COMPANY_NAME = 'Harbor'
 const DEFAULT_COMPANY_TAGLINE = 'Shipping invoices, simplified'
 
-// ── Rate tables ────────────────────────────────────────────────────────────
 const SEA_RATES: Record<number, number> = {
   1:500,2:850,3:1050,4:1250,5:1500,6:1750,7:2000,8:2250,9:2650,10:3050,
   11:3350,12:3650,13:3950,14:4250,15:4550,16:4850,17:5150,18:5450,19:5750,20:5900,
@@ -38,7 +36,6 @@ function getRateForLbs(lbs: number, freightType: 'air' | 'sea'): number {
   return table[clamped] ?? 0
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────
 type Package = {
   weight: string
   weight_unit: 'lb' | 'kg'
@@ -94,7 +91,6 @@ const statusColor: Record<string, { bg: string; color: string }> = {
   paid: { bg: '#dbeafe', color: '#2563eb' },
 }
 
-// ── Sidebar ────────────────────────────────────────────────────────────────
 const Sidebar = ({ email, companyName, onSignOut }: {
   email: string
   companyName: string
@@ -127,7 +123,6 @@ const Sidebar = ({ email, companyName, onSignOut }: {
         </Link>
       ))}
     </nav>
-    {/* Settings link — navigates to dashboard where settings lives */}
     <div style={{ padding: '0 12px 8px' }}>
       <Link to="/dashboard"
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, color: '#94a3b8', fontSize: 14, textDecoration: 'none', marginBottom: 4 }}
@@ -144,7 +139,6 @@ const Sidebar = ({ email, companyName, onSignOut }: {
   </div>
 )
 
-// ── Rate Sheet Modal ───────────────────────────────────────────────────────
 function RateSheetModal({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<'air' | 'sea'>('air')
   const airRows = Object.entries(AIR_RATES).map(([lb, rate]) => ({ lb: Number(lb), rate }))
@@ -200,7 +194,6 @@ function RateSheetModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ── Package Row ────────────────────────────────────────────────────────────
 function PackageRow({ pkg, index, freightType, onChange, onRemove, canRemove }: {
   pkg: Package
   index: number
@@ -275,7 +268,6 @@ function PackageRow({ pkg, index, freightType, onChange, onRemove, canRemove }: 
   )
 }
 
-// ── Invoice Form ───────────────────────────────────────────────────────────
 type FormState = {
   customer_id: string
   freight_type: 'air' | 'sea'
@@ -306,7 +298,7 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
   }
 
   function addPackage() {
-    if (form.packages.length >= 3) return
+    // No limit — add as many packages as needed
     setForm({ ...form, packages: [...form.packages, emptyPackage()] })
   }
 
@@ -365,10 +357,8 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
 
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Packages ({form.packages.length}/3)</label>
-          {form.packages.length < 3 && (
-            <button onClick={addPackage} style={{ fontSize: 13, color: '#0e9396', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ Add package</button>
-          )}
+          <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Packages ({form.packages.length})</label>
+          <button onClick={addPackage} style={{ fontSize: 13, color: '#0e9396', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ Add package</button>
         </div>
         {form.packages.map((pkg, i) => (
           <PackageRow
@@ -410,7 +400,6 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
   )
 }
 
-// ── PDF Generator ─────────────────────────────────────────────────────────
 function generateInvoicePDF(invoice: Invoice, customer: Customer | null, companyName: string, companyTagline: string): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
@@ -551,7 +540,6 @@ function generateInvoicePDF(invoice: Invoice, customer: Customer | null, company
   return doc
 }
 
-// ── Send Modal ─────────────────────────────────────────────────────────────
 function SendModal({ invoice, customer, companyName, onClose }: { invoice: Invoice; customer: Customer | null; companyName: string; onClose: () => void }) {
   const packages: Package[] = invoice.packages ?? [{
     weight: String(invoice.weight_kg),
@@ -653,7 +641,6 @@ function SendModal({ invoice, customer, companyName, onClose }: { invoice: Invoi
   )
 }
 
-// ── Printable Invoice ──────────────────────────────────────────────────────
 function PrintableInvoice({ invoice, customer, companyName, companyTagline, onClose }: { invoice: Invoice; customer: Customer | null; companyName: string; companyTagline: string; onClose: () => void }) {
   const packages: Package[] = invoice.packages ?? [{
     weight: String(invoice.weight_kg),
@@ -748,7 +735,6 @@ function PrintableInvoice({ invoice, customer, companyName, companyTagline, onCl
   )
 }
 
-// ── Main Page ──────────────────────────────────────────────────────────────
 function InvoicesPage() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -763,7 +749,6 @@ function InvoicesPage() {
   const [companyName, setCompanyName] = useState(() => localStorage.getItem('companyName') ?? DEFAULT_COMPANY_NAME)
   const [companyTagline, setCompanyTagline] = useState(() => localStorage.getItem('companyTagline') ?? DEFAULT_COMPANY_TAGLINE)
 
-  // Sync company name/tagline when changed from dashboard (same or other tabs)
   useEffect(() => {
     function onStorage(e: StorageEvent) {
       if (e.key === 'companyName' && e.newValue) setCompanyName(e.newValue)

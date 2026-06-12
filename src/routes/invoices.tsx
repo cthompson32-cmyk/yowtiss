@@ -4,6 +4,9 @@ import { supabase } from '@/lib/supabase'
 import jsPDF from 'jspdf'
 
 export const Route = createFileRoute('/invoices')({
+   head: () => ({
+     meta: [{ title: 'Invoices' }],
+  }),
   component: InvoicesPage,
 })
 

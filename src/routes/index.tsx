@@ -6,6 +6,9 @@ export const Route = createFileRoute('/')({
   component: AuthPage,
 })
 
+const DEFAULT_COMPANY_NAME = 'Harbor'
+const DEFAULT_COMPANY_TAGLINE = 'Shipping invoices, simplified'
+
 function AuthPage() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<'signin' | 'signup'>('signin')
@@ -13,6 +16,9 @@ function AuthPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const companyName = localStorage.getItem('companyName') ?? DEFAULT_COMPANY_NAME
+  const companyTagline = localStorage.getItem('companyTagline') ?? DEFAULT_COMPANY_TAGLINE
 
   async function handleSubmit() {
     setError('')
@@ -54,8 +60,8 @@ function AuthPage() {
           </svg>
         </div>
         <div>
-          <div style={{ color: 'white', fontWeight: 700, fontSize: 22 }}>Harbor</div>
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Shipping invoices, simplified</div>
+          <div style={{ color: 'white', fontWeight: 700, fontSize: 22 }}>{companyName}</div>
+          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>{companyTagline}</div>
         </div>
       </div>
 

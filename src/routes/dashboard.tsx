@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export const Route = createFileRoute('/dashboard')({
+   head: () => ({
+     meta: [{ title: 'Dashboard' }],
+  }),
   component: Dashboard,
 })
 

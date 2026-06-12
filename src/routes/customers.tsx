@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export const Route = createFileRoute('/customers')({
+  head: () => ({
+     meta: [{ title: 'Customers ' }],
+  }),
   component: CustomersPage,
 })
 

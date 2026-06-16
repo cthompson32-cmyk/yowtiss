@@ -44,6 +44,9 @@ type Package = {
   weight_unit: 'lb' | 'kg'
   rounding: 'up' | 'down'
   description: string
+  // Custom price override
+  useCustomPrice?: boolean
+  customPrice?: string
 }
 
 type Invoice = {
@@ -78,6 +81,11 @@ function toLbs(weight: number, unit: 'lb' | 'kg') {
 }
 
 function calcPackageAmount(pkg: Package, freightType: 'air' | 'sea'): number {
+  // If custom price is set and valid, use it
+  if (pkg.useCustomPrice) {
+    const custom = parseFloat(pkg.customPrice ?? '')
+    if (!isNaN(custom) && custom >= 0) return custom
+  }
   const w = parseFloat(pkg.weight) || 0
   const lbs = toLbs(w, pkg.weight_unit)
   const rounded = pkg.rounding === 'up' ? Math.ceil(lbs) : Math.floor(lbs)
@@ -208,18 +216,25 @@ function PackageRow({ pkg, index, freightType, onChange, onRemove, canRemove }: 
   const w = parseFloat(pkg.weight) || 0
   const lbsRaw = toLbs(w, pkg.weight_unit)
   const lbsRounded = pkg.rounding === 'up' ? Math.ceil(lbsRaw) : Math.floor(lbsRaw)
-  const pkgAmount = w > 0 ? getRateForLbs(lbsRounded, freightType) : 0
+  const calculatedAmount = w > 0 ? getRateForLbs(lbsRounded, freightType) : 0
+  const displayAmount = calcPackageAmount(pkg, freightType)
+  const isCustom = pkg.useCustomPrice ?? false
 
   const inp = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
-    <input {...props} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box' }} />
+    <input {...props} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box', ...(props.style ?? {}) }} />
   )
 
   return (
-    <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, marginBottom: 12, border: '1.5px solid #e2e8f0' }}>
+    <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, marginBottom: 12, border: `1.5px solid ${isCustom ? '#f59e0b' : '#e2e8f0'}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <span style={{ fontWeight: 600, fontSize: 13, color: '#374151' }}>Package {index + 1}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {w > 0 && <span style={{ fontSize: 12, color: '#0e9396', fontWeight: 600 }}>${pkgAmount.toLocaleString()} JMD</span>}
+          {(w > 0 || isCustom) && (
+            <span style={{ fontSize: 12, color: isCustom ? '#b45309' : '#0e9396', fontWeight: 600 }}>
+              ${displayAmount.toLocaleString()} JMD
+              {isCustom && <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.75 }}>(custom)</span>}
+            </span>
+          )}
           {canRemove && (
             <button onClick={onRemove} style={{ background: 'none', border: 'none', color: '#e11d48', cursor: 'pointer', fontSize: 16 }}>✕</button>
           )}
@@ -237,7 +252,7 @@ function PackageRow({ pkg, index, freightType, onChange, onRemove, canRemove }: 
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
         <div>
           <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Unit</label>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -267,6 +282,50 @@ function PackageRow({ pkg, index, freightType, onChange, onRemove, canRemove }: 
           </div>
         </div>
       </div>
+
+      {/* Custom price toggle + input */}
+      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 10, marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isCustom ? 8 : 0 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: isCustom ? '#b45309' : '#64748b' }}>
+            <div
+              onClick={() => onChange({ ...pkg, useCustomPrice: !isCustom, customPrice: isCustom ? '' : String(calculatedAmount) })}
+              style={{
+                width: 34, height: 18, borderRadius: 9, background: isCustom ? '#f59e0b' : '#cbd5e1',
+                position: 'relative', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                position: 'absolute', top: 2, left: isCustom ? 16 : 2, width: 14, height: 14,
+                borderRadius: '50%', background: 'white', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </div>
+            Custom price
+          </label>
+          {!isCustom && w > 0 && (
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+              Calculated: ${calculatedAmount.toLocaleString()} JMD
+            </span>
+          )}
+        </div>
+
+        {isCustom && (
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#64748b', fontWeight: 600 }}>$</span>
+            <input
+              type="number"
+              placeholder={String(calculatedAmount || 0)}
+              value={pkg.customPrice ?? ''}
+              onChange={e => onChange({ ...pkg, customPrice: e.target.value })}
+              style={{
+                width: '100%', padding: '8px 80px 8px 28px', borderRadius: 8,
+                border: '1.5px solid #f59e0b', fontSize: 13, boxSizing: 'border-box',
+                background: '#fffbeb', outline: 'none',
+              }}
+            />
+            <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#b45309', fontWeight: 600 }}>JMD</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -279,7 +338,7 @@ type FormState = {
   notes: string
 }
 
-const emptyPackage = (): Package => ({ weight: '', weight_unit: 'lb', rounding: 'up', description: '' })
+const emptyPackage = (): Package => ({ weight: '', weight_unit: 'lb', rounding: 'up', description: '', useCustomPrice: false, customPrice: '' })
 
 function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
   customers: Customer[]
@@ -293,6 +352,7 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
   const [error, setError] = useState('')
 
   const totalAmount = calcTotalAmount(form.packages, form.freight_type)
+  const hasCustomPrice = form.packages.some(p => p.useCustomPrice)
 
   function setPackage(i: number, pkg: Package) {
     const pkgs = [...form.packages]
@@ -301,7 +361,6 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
   }
 
   function addPackage() {
-    // No limit — add as many packages as needed
     setForm({ ...form, packages: [...form.packages, emptyPackage()] })
   }
 
@@ -313,6 +372,9 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
     setError('')
     if (!form.customer_id) return setError('Please select a customer.')
     if (form.packages.some(p => !p.weight)) return setError('Please enter weight for all packages.')
+    if (form.packages.some(p => p.useCustomPrice && (p.customPrice === '' || isNaN(parseFloat(p.customPrice ?? ''))))) {
+      return setError('Please enter a valid custom price for all overridden packages.')
+    }
     setLoading(true)
     await onSave(form)
     setLoading(false)
@@ -376,12 +438,13 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
         ))}
       </div>
 
-      <div style={{ background: '#f8fafc', borderRadius: 12, padding: '14px 16px', marginBottom: 16, border: '1.5px solid #e2e8f0' }}>
+      <div style={{ background: hasCustomPrice ? '#fffbeb' : '#f8fafc', borderRadius: 12, padding: '14px 16px', marginBottom: 16, border: `1.5px solid ${hasCustomPrice ? '#f59e0b' : '#e2e8f0'}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 13, color: '#64748b' }}>
             {form.freight_type === 'air' ? '✈️ Air' : '🚢 Ocean'} · {form.packages.length} package{form.packages.length > 1 ? 's' : ''}
+            {hasCustomPrice && <span style={{ marginLeft: 6, color: '#b45309', fontWeight: 600 }}>· custom pricing</span>}
           </span>
-          <span style={{ fontWeight: 700, fontSize: 16, color: '#0e9396' }}>${totalAmount.toLocaleString()} JMD</span>
+          <span style={{ fontWeight: 700, fontSize: 16, color: hasCustomPrice ? '#b45309' : '#0e9396' }}>${totalAmount.toLocaleString()} JMD</span>
         </div>
       </div>
 
@@ -483,14 +546,14 @@ function generateInvoicePDF(invoice: Invoice, customer: Customer | null, company
   packages.forEach((pkg, i) => {
     const lbs = toLbs(parseFloat(pkg.weight) || 0, pkg.weight_unit)
     const rounded = pkg.rounding === 'up' ? Math.ceil(lbs) : Math.floor(lbs)
-    const amount = getRateForLbs(rounded, freightType)
+    const amount = calcPackageAmount(pkg, freightType)
     const rowBg = i % 2 === 0 ? [248, 250, 252] : [255, 255, 255]
     doc.setFillColor(rowBg[0], rowBg[1], rowBg[2])
     doc.rect(40, y, W - 80, 30, 'F')
     doc.setTextColor(55, 65, 81)
     doc.setFontSize(10)
     doc.setFont('helvetica', 'normal')
-    const desc = `${pkg.description || `Package ${i + 1}`} — ${pkg.weight} ${pkg.weight_unit} (${rounded} lbs, rounded ${pkg.rounding})`
+    const desc = `${pkg.description || `Package ${i + 1}`} — ${pkg.weight} ${pkg.weight_unit} (${rounded} lbs)`
     doc.text(desc, 52, y + 19, { maxWidth: W - 280 })
     doc.setTextColor(100, 116, 139)
     doc.text(`${rounded} lbs`, W - 160, y + 19, { align: 'right' })
@@ -554,7 +617,8 @@ function SendModal({ invoice, customer, companyName, onClose }: { invoice: Invoi
   const pkgLines = packages.map((p, i) => {
     const lbs = toLbs(parseFloat(p.weight) || 0, p.weight_unit)
     const rounded = p.rounding === 'up' ? Math.ceil(lbs) : Math.floor(lbs)
-    return `  Package ${i + 1}${p.description ? ` (${p.description})` : ''}: ${rounded} lbs`
+    const amount = calcPackageAmount(p, invoice.freight_type ?? 'sea')
+    return `  Package ${i + 1}${p.description ? ` (${p.description})` : ''}: ${rounded} lbs — $${amount.toLocaleString()} JMD`
   }).join('\n')
 
   const total = calcTotalAmount(packages, invoice.freight_type ?? 'sea')
@@ -697,12 +761,12 @@ function PrintableInvoice({ invoice, customer, companyName, companyTagline, onCl
             {packages.map((pkg, i) => {
               const lbs = toLbs(parseFloat(pkg.weight) || 0, pkg.weight_unit)
               const rounded = pkg.rounding === 'up' ? Math.ceil(lbs) : Math.floor(lbs)
-              const amount = getRateForLbs(rounded, freightType)
+              const amount = calcPackageAmount(pkg, freightType)
               return (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px', padding: '12px 20px', fontSize: 14, borderBottom: i < packages.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                  <span>{pkg.description || `Package ${i + 1}`} — {pkg.weight} {pkg.weight_unit} ({rounded} lbs, rounded {pkg.rounding})</span>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px', padding: '12px 20px', fontSize: 14, borderBottom: i < packages.length - 1 ? '1px solid #f1f5f9' : 'none', background: 'white' }}>
+                  <span>{pkg.description || `Package ${i + 1}`} — {pkg.weight} {pkg.weight_unit} ({rounded} lbs)</span>
                   <span style={{ textAlign: 'right', color: '#64748b' }}>{rounded} lbs</span>
-                  <span style={{ textAlign: 'right', fontWeight: 600 }}>${amount.toLocaleString()}</span>
+                  <span style={{ textAlign: 'right', fontWeight: 600, color: '#374151' }}>${amount.toLocaleString()}</span>
                 </div>
               )
             })}
@@ -897,6 +961,7 @@ function InvoicesPage() {
                   const freightType = inv.freight_type ?? 'sea'
                   const packages = inv.packages ?? [{ weight: String(inv.weight_kg), weight_unit: inv.weight_unit, rounding: inv.rounding, description: 'Shipment' }]
                   const total = calcTotalAmount(packages, freightType)
+                  const hasCustom = packages.some(p => p.useCustomPrice && p.customPrice !== '')
                   return (
                     <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: i < dayInvoices.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
                       <div>
@@ -908,6 +973,11 @@ function InvoicesPage() {
                           {packages.length > 1 && (
                             <span style={{ fontSize: 11, background: '#f3e8ff', color: '#7c3aed', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>
                               {packages.length} pkgs
+                            </span>
+                          )}
+                          {hasCustom && (
+                            <span style={{ fontSize: 11, background: '#fef3c7', color: '#b45309', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>
+                              ✏️ custom price
                             </span>
                           )}
                         </div>

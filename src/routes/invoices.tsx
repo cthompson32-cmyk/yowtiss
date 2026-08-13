@@ -64,6 +64,18 @@ type Invoice = {
   created_at: string
   freight_type?: 'air' | 'sea'
   packages?: Package[]
+  period_start?: string | null
+  period_end?: string | null
+}
+
+function formatPeriod(start?: string | null, end?: string | null): string {
+  if (!start || !end) return ''
+  const s = new Date(start + 'T12:00:00')
+  const e = new Date(end + 'T12:00:00')
+  const sameYear = s.getFullYear() === e.getFullYear()
+  const startStr = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: sameYear ? undefined : 'numeric' })
+  const endStr = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return `${startStr} – ${endStr}`
 }
 
 type Customer = {
@@ -101,6 +113,8 @@ const statusColor: Record<string, { bg: string; color: string }> = {
   sent: { bg: '#dcfce7', color: '#16a34a' },
   paid: { bg: '#dbeafe', color: '#2563eb' },
 }
+
+const STATUS_OPTIONS = ['draft', 'sent', 'paid'] as const
 
 const Sidebar = ({ email, companyName, onSignOut }: {
   email: string
@@ -336,6 +350,9 @@ type FormState = {
   packages: Package[]
   status: string
   notes: string
+  invoice_date: string
+  period_start: string
+  period_end: string
 }
 
 const emptyPackage = (): Package => ({ weight: '', weight_unit: 'lb', rounding: 'up', description: '', useCustomPrice: false, customPrice: '' })
@@ -371,6 +388,13 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
   async function handleSave() {
     setError('')
     if (!form.customer_id) return setError('Please select a customer.')
+    if (!form.invoice_date) return setError('Please select an invoice date.')
+    if ((form.period_start && !form.period_end) || (!form.period_start && form.period_end)) {
+      return setError('Please set both a start and end date for the billing period, or leave both blank.')
+    }
+    if (form.period_start && form.period_end && form.period_end < form.period_start) {
+      return setError('Period end date must be on or after the period start date.')
+    }
     if (form.packages.some(p => !p.weight)) return setError('Please enter weight for all packages.')
     if (form.packages.some(p => p.useCustomPrice && (p.customPrice === '' || isNaN(parseFloat(p.customPrice ?? ''))))) {
       return setError('Please enter a valid custom price for all overridden packages.')
@@ -402,6 +426,22 @@ function InvoiceForm({ customers, initial, onSave, onCancel, title }: {
       {f('Customer', sel({ value: form.customer_id, onChange: e => setForm({ ...form, customer_id: e.target.value }) },
         <><option value="">Select a customer...</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</>
       ))}
+
+      {f('Invoice date', inp({ type: 'date', value: form.invoice_date, onChange: e => setForm({ ...form, invoice_date: e.target.value }) }))}
+
+      {f('Billing period (optional)',
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="date" value={form.period_start} onChange={e => setForm({ ...form, period_start: e.target.value })}
+            style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box' }} />
+          <span style={{ color: '#94a3b8', fontSize: 13 }}>to</span>
+          <input type="date" value={form.period_end} min={form.period_start || undefined} onChange={e => setForm({ ...form, period_end: e.target.value })}
+            style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box' }} />
+          {(form.period_start || form.period_end) && (
+            <button onClick={() => setForm({ ...form, period_start: '', period_end: '' })} title="Clear period"
+              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
+          )}
+        </div>
+      )}
 
       {f('Freight type',
         <div style={{ display: 'flex', gap: 10 }}>
@@ -531,6 +571,13 @@ function generateInvoicePDF(invoice: Invoice, customer: Customer | null, company
   if (customer?.email) { doc.text(customer.email, 40, y); y += 13 }
   if (customer?.phone) { doc.text(customer.phone, 40, y); y += 13 }
   if (customer?.address) { doc.text(customer.address, 40, y); y += 13 }
+  if (invoice.period_start && invoice.period_end) {
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(100, 116, 139)
+    doc.text(`Billing period: ${formatPeriod(invoice.period_start, invoice.period_end)}`, 40, y)
+    y += 13
+    doc.setFont('helvetica', 'normal')
+  }
 
   y += 16
   doc.setFillColor(241, 245, 249)
@@ -630,6 +677,7 @@ function SendModal({ invoice, customer, companyName, onClose }: { invoice: Invoi
     `Hi ${customer?.name ?? invoice.customer_name},\n\nHere is your ${companyName} shipping invoice:\n\n` +
     `Invoice #: ${invoiceNo}\n` +
     `Freight type: ${freightLabel}\n` +
+    (invoice.period_start && invoice.period_end ? `Billing period: ${formatPeriod(invoice.period_start, invoice.period_end)}\n` : '') +
     `Packages:\n${pkgLines}\n` +
     `Total: $${total.toLocaleString()} JMD\n` +
     `Status: ${invoice.status}\n\n` +
@@ -752,6 +800,11 @@ function PrintableInvoice({ invoice, customer, companyName, companyTagline, onCl
             {customer?.email && <div style={{ color: '#64748b', fontSize: 14 }}>{customer.email}</div>}
             {customer?.phone && <div style={{ color: '#64748b', fontSize: 14 }}>{customer.phone}</div>}
             {customer?.address && <div style={{ color: '#64748b', fontSize: 14 }}>{customer.address}</div>}
+            {invoice.period_start && invoice.period_end && (
+              <div style={{ marginTop: 10, display: 'inline-block', background: '#f1f5f9', color: '#374151', fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 20 }}>
+                Billing period: {formatPeriod(invoice.period_start, invoice.period_end)}
+              </div>
+            )}
           </div>
 
           <div style={{ background: '#f8fafc', borderRadius: 12, overflow: 'hidden', marginBottom: 24 }}>
@@ -813,6 +866,9 @@ function InvoicesPage() {
   const [sendInvoice, setSendInvoice] = useState<Invoice | null>(null)
   const [showRates, setShowRates] = useState(false)
   const [filterDate, setFilterDate] = useState('')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [hiddenStatuses, setHiddenStatuses] = useState<string[]>([])
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const [companyName, setCompanyName] = useState(() => localStorage.getItem('companyName') ?? DEFAULT_COMPANY_NAME)
   const [companyTagline, setCompanyTagline] = useState(() => localStorage.getItem('companyTagline') ?? DEFAULT_COMPANY_TAGLINE)
 
@@ -831,6 +887,9 @@ function InvoicesPage() {
     packages: [emptyPackage()],
     status: 'draft',
     notes: '',
+    invoice_date: new Date().toLocaleDateString('en-CA'),
+    period_start: '',
+    period_end: '',
   }
 
   useEffect(() => {
@@ -850,6 +909,15 @@ function InvoicesPage() {
     if (cust.data) setCustomers(cust.data)
   }
 
+  // Combine a YYYY-MM-DD date with the current local time so we don't
+  // shift the invoice date when it's converted to a UTC ISO string.
+  function dateToTimestamp(dateStr: string, original?: string) {
+    const time = original ? new Date(original) : new Date()
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const combined = new Date(y, m - 1, d, time.getHours(), time.getMinutes(), time.getSeconds())
+    return combined.toISOString()
+  }
+
   async function handleCreate(form: FormState) {
     const { data: { user } } = await supabase.auth.getUser()
     const total = calcTotalAmount(form.packages, form.freight_type)
@@ -866,6 +934,9 @@ function InvoicesPage() {
       notes: form.notes,
       freight_type: form.freight_type,
       packages: form.packages,
+      created_at: dateToTimestamp(form.invoice_date),
+      period_start: form.period_start || null,
+      period_end: form.period_end || null,
     })
     setShowCreate(false)
     fetchAll()
@@ -886,6 +957,9 @@ function InvoicesPage() {
       notes: form.notes,
       freight_type: form.freight_type,
       packages: form.packages,
+      created_at: dateToTimestamp(form.invoice_date, editInvoice.created_at),
+      period_start: form.period_start || null,
+      period_end: form.period_end || null,
     }).eq('id', editInvoice.id)
     setEditInvoice(null)
     fetchAll()
@@ -898,9 +972,17 @@ function InvoicesPage() {
 
   const getCustomer = (id: string) => customers.find(c => c.id === id) ?? null
 
-  const filteredInvoices = filterDate
-    ? invoices.filter(inv => new Date(inv.created_at).toLocaleDateString('en-CA') === filterDate)
-    : invoices
+  const filteredInvoices = invoices
+    .filter(inv => !filterDate || new Date(inv.created_at).toLocaleDateString('en-CA') === filterDate)
+    .filter(inv => !hiddenStatuses.includes(inv.status))
+    .sort((a, b) => {
+      const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      return sortOrder === 'asc' ? diff : -diff
+    })
+
+  function toggleStatus(status: string) {
+    setHiddenStatuses(prev => prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status])
+  }
 
   const grouped: Record<string, Invoice[]> = {}
   filteredInvoices.forEach(inv => {
@@ -929,7 +1011,7 @@ function InvoicesPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
           <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Filter by day:</label>
           <input
             type="date"
@@ -942,6 +1024,55 @@ function InvoicesPage() {
               ✕ Clear
             </button>
           )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Sort:</label>
+            <div style={{ display: 'flex', border: '1.5px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+              {([
+                { val: 'desc', label: 'Newest first' },
+                { val: 'asc', label: 'Oldest first' },
+              ] as const).map(o => (
+                <button key={o.val} onClick={() => setSortOrder(o.val)} style={{
+                  padding: '8px 12px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                  background: sortOrder === o.val ? '#0a1628' : 'white',
+                  color: sortOrder === o.val ? 'white' : '#64748b',
+                }}>{o.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setStatusMenuOpen(o => !o)} style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10,
+              border: '1.5px solid #e2e8f0', background: hiddenStatuses.length ? '#fffbeb' : 'white', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              color: hiddenStatuses.length ? '#b45309' : '#374151',
+            }}>
+              Status {hiddenStatuses.length ? `(${STATUS_OPTIONS.length - hiddenStatuses.length}/${STATUS_OPTIONS.length} shown)` : ''} ▾
+            </button>
+            {statusMenuOpen && (
+              <>
+                <div onClick={() => setStatusMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9 }} />
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', left: 0, background: 'white', border: '1.5px solid #e2e8f0',
+                  borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 12, zIndex: 10, minWidth: 180,
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 8, letterSpacing: 0.5 }}>SHOW STATUSES</div>
+                  {STATUS_OPTIONS.map(s => (
+                    <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', cursor: 'pointer', fontSize: 13, color: '#374151', textTransform: 'capitalize' }}>
+                      <input type="checkbox" checked={!hiddenStatuses.includes(s)} onChange={() => toggleStatus(s)} />
+                      {s}
+                    </label>
+                  ))}
+                  {hiddenStatuses.length > 0 && (
+                    <button onClick={() => setHiddenStatuses([])} style={{ marginTop: 8, width: '100%', padding: '6px', borderRadius: 8, border: 'none', background: '#f1f5f9', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      Show all
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
           <span style={{ fontSize: 13, color: '#94a3b8' }}>
             {filteredInvoices.length} invoice{filteredInvoices.length !== 1 ? 's' : ''}
             {filterDate && ` on ${new Date(filterDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`}
@@ -983,6 +1114,7 @@ function InvoicesPage() {
                         </div>
                         <div style={{ color: '#94a3b8', fontSize: 13 }}>
                           {packages.map(p => `${p.weight} ${p.weight_unit}`).join(' + ')} · {new Date(inv.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          {inv.period_start && inv.period_end && ` · Period: ${formatPeriod(inv.period_start, inv.period_end)}`}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1022,6 +1154,9 @@ function InvoicesPage() {
               }],
               status: editInvoice.status,
               notes: editInvoice.notes ?? '',
+              invoice_date: new Date(editInvoice.created_at).toLocaleDateString('en-CA'),
+              period_start: editInvoice.period_start ?? '',
+              period_end: editInvoice.period_end ?? '',
             }}
             onSave={handleEdit}
             onCancel={() => setEditInvoice(null)}
